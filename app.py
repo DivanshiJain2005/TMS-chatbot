@@ -1,47 +1,52 @@
 import os
+from dotenv import dotenv_values
 import streamlit as st
 from groq import Groq
 
-# Function to parse Groq stream response
+
 def parse_groq_stream(stream):
+    # Yield content chunk by chunk as the stream arrives
     for chunk in stream:
         if chunk.choices:
             if chunk.choices[0].delta.content is not None:
                 yield chunk.choices[0].delta.content
 
-# Streamlit page configuration
+
+# streamlit page configuration
 st.set_page_config(
     page_title="Transcranial Magnetic Stimulation Chatbot",
     page_icon="🤖",
     layout="centered",
 )
 
-# Load secrets from Streamlit Cloud
+# Load environment variables
 try:
-    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-    INITIAL_RESPONSE = st.secrets["INITIAL_RESPONSE"]
-    INITIAL_MSG = st.secrets["INITIAL_MSG"]
-    CHAT_CONTEXT = st.secrets["CHAT_CONTEXT"]
-except KeyError as e:
-    st.error(f"Missing secret: {e}. Please ensure the required secrets are set in Streamlit Cloud.")
+    secrets = dotenv_values(".env")  # for dev env
+    GROQ_API_KEY = secrets["GROQ_API_KEY"]
+except:
+    secrets = st.secrets  # for streamlit deployment
+    GROQ_API_KEY = secrets["GROQ_API_KEY"]
 
-# Set the API key in the environment variable (good practice for external API calls)
+# save the api_key to environment variable
 os.environ["GROQ_API_KEY"] = GROQ_API_KEY
 
-# Initialize Groq client
+INITIAL_RESPONSE = secrets["INITIAL_RESPONSE"]
+INITIAL_MSG = secrets["INITIAL_MSG"]
+CHAT_CONTEXT = secrets["CHAT_CONTEXT"]
+
 client = Groq()
 
-# Initialize the chat history if not already in session state
+# initialize the chat history if not present in session
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
         {"role": "assistant", "content": INITIAL_RESPONSE},
     ]
 
-# Page title
-st.title("Welcome to the bot!")
-st.caption("Helping You Level Up Your TMS knowledge")
+# page title
+st.title("Welcome to the Chatbot!")
+st.caption("Helping You Level Up Your TMS Knowledge")
 
-# Display chat history (messages)
+# Display chat history
 for message in st.session_state.chat_history:
     with st.chat_message(message["role"], avatar='🤖' if message["role"] == "assistant" else '🗨️'):
         st.markdown(message["content"])
@@ -50,34 +55,33 @@ for message in st.session_state.chat_history:
 user_prompt = st.chat_input("Ask me")
 
 if user_prompt:
-    # Add user message to chat history
     with st.chat_message("user", avatar="🗨️"):
         st.markdown(user_prompt)
     st.session_state.chat_history.append({"role": "user", "content": user_prompt})
 
-    # Prepare messages for the Groq model
+    # Prepare messages for the LLM
     messages = [
         {"role": "system", "content": CHAT_CONTEXT},
         {"role": "assistant", "content": INITIAL_MSG},
         *st.session_state.chat_history
     ]
 
-    # Display assistant response in the chat message container
+    # Display assistant response as it streams
     with st.chat_message("assistant", avatar='🤖'):
-        # Request completion from Groq API with streaming enabled
+        # Create the streaming request to Groq API
         stream = client.chat.completions.create(
             model="llama3-8b-8192",
             messages=messages,
-            stream=True  # Streaming mode
+            stream=True  # Stream the response
         )
-
-        # Accumulate the response from the stream
+        
+        # Accumulate the full response in one go, then display it
         full_response = ""
         for chunk in parse_groq_stream(stream):
-            full_response += chunk  # Concatenate each chunk
+            full_response += chunk  # Accumulate all the response
 
-        # After full response is accumulated, display the complete response
-        st.markdown(full_response)
+        # After accumulating the full response, display it
+        st.markdown(full_response)  
 
-    # Add assistant response to chat history
+    # Add the final response to chat history
     st.session_state.chat_history.append({"role": "assistant", "content": full_response})
