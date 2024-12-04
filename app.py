@@ -42,7 +42,7 @@ if "chat_history" not in st.session_state:
     ]
 
 # page title
-st.title("Welcome to the Chatbot!")
+st.title("Welcome to Careforce!")
 
 # Display chat history
 for message in st.session_state.chat_history:
