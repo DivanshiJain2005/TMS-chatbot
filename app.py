@@ -14,8 +14,7 @@ def parse_groq_stream(stream):
 
 # streamlit page configuration
 st.set_page_config(
-    page_title="Transcranial Magnetic Stimulation Chatbot",
-    page_icon="🤖",
+    page_title="TMS Chatbot Careforce",
     layout="centered",
 )
 
@@ -44,18 +43,17 @@ if "chat_history" not in st.session_state:
 
 # page title
 st.title("Welcome to the Chatbot!")
-st.caption("Helping You Level Up Your TMS Knowledge")
 
 # Display chat history
 for message in st.session_state.chat_history:
-    with st.chat_message(message["role"], avatar='🤖' if message["role"] == "assistant" else '🗨️'):
+    with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 # User input field
 user_prompt = st.chat_input("Ask me")
 
 if user_prompt:
-    with st.chat_message("user", avatar="🗨️"):
+    with st.chat_message("user"):
         st.markdown(user_prompt)
     st.session_state.chat_history.append({"role": "user", "content": user_prompt})
 
@@ -67,7 +65,7 @@ if user_prompt:
     ]
 
     # Display assistant response as it streams
-    with st.chat_message("assistant", avatar='🤖'):
+    with st.chat_message("assistant"):
         # Create the streaming request to Groq API
         stream = client.chat.completions.create(
             model="llama3-8b-8192",
