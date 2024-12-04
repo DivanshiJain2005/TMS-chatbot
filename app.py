@@ -1,87 +1,80 @@
 import os
-from dotenv import dotenv_values
 import streamlit as st
 from groq import Groq
 
-
+# Function to parse Groq stream response
 def parse_groq_stream(stream):
     for chunk in stream:
         if chunk.choices:
             if chunk.choices[0].delta.content is not None:
                 yield chunk.choices[0].delta.content
 
-
-# streamlit page configuration
+# Streamlit page configuration
 st.set_page_config(
     page_title="Transcranial Magnetic Stimulation Chatbot",
     page_icon="🤖",
     layout="centered",
 )
 
+# Load secrets from Streamlit Cloud (no need for dotenv here)
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+INITIAL_RESPONSE = st.secrets["INITIAL_RESPONSE"]
+INITIAL_MSG = st.secrets["INITIAL_MSG"]
+CHAT_CONTEXT = st.secrets["CHAT_CONTEXT"]
 
-try:
-    secrets = dotenv_values(".env")  # for dev env
-    GROQ_API_KEY = secrets["GROQ_API_KEY"]
-except:
-    secrets = st.secrets  # for streamlit deployment
-    GROQ_API_KEY = secrets["GROQ_API_KEY"]
-
-# save the api_key to environment variable
+# Set the API key in the environment variable (not strictly necessary, but good practice)
 os.environ["GROQ_API_KEY"] = GROQ_API_KEY
 
-INITIAL_RESPONSE = secrets["INITIAL_RESPONSE"]
-INITIAL_MSG = secrets["INITIAL_MSG"]
-CHAT_CONTEXT = secrets["CHAT_CONTEXT"]
-
-
+# Initialize Groq client
 client = Groq()
 
-# initialize the chat history if present as streamlit session
+# Initialize the chat history if not already in session state
 if "chat_history" not in st.session_state:
-    # print("message not in chat session")
     st.session_state.chat_history = [
-        {"role": "assistant",
-         "content": INITIAL_RESPONSE
-         },
+        {"role": "assistant", "content": INITIAL_RESPONSE},
     ]
 
-# page title
+# Page title
 st.title("Welcome Buddy🤓!")
 st.caption("Helping You Level Up Your Coding Game")
-# the messages in chat_history will be stored as {"role":"user/assistant", "content":"msg}
-# display chat history
+
+# Display chat history (messages)
 for message in st.session_state.chat_history:
-    # print("message in chat session")
-    with st.chat_message("role", avatar='🤖'):
+    with st.chat_message(message["role"], avatar='🤖' if message["role"] == "assistant" else '🗨️'):
         st.markdown(message["content"])
 
-
-# user input field
+# User input field
 user_prompt = st.chat_input("Ask me")
 
 if user_prompt:
-    # st.chat_message("user").markdown
+    # Add user message to chat history
     with st.chat_message("user", avatar="🗨️"):
         st.markdown(user_prompt)
-    st.session_state.chat_history.append(
-        {"role": "user", "content": user_prompt})
+    st.session_state.chat_history.append({"role": "user", "content": user_prompt})
 
-    # get a response from the LLM
+    # Prepare messages for the Groq model
     messages = [
-        {"role": "system", "content": CHAT_CONTEXT
-         },
+        {"role": "system", "content": CHAT_CONTEXT},
         {"role": "assistant", "content": INITIAL_MSG},
         *st.session_state.chat_history
     ]
 
-    # Display assistant response in chat message container
+    # Display assistant response in the chat message container
     with st.chat_message("assistant", avatar='🤖'):
+        # Request completion from Groq API with streaming enabled
         stream = client.chat.completions.create(
             model="llama3-8b-8192",
-            # model="llama-3.1-70b-versatile",
             messages=messages,
-            stream=True  # for streaming the message
+            stream=True  # Streaming mode
         )
-        response = st.write_stream(parse_groq_stream(stream))
-    st.session_state.chat_history.append(
-        {"role": "assistant", "content": response})
+
+        # Accumulate the response from the stream
+        full_response = ""
+        for chunk in parse_groq_stream(stream):
+            full_response += chunk  # Concatenate each chunk
+
+        # After full response is accumulated, display the complete response
+        st.markdown(full_response)
+
+    # Add assistant response to chat history
+    st.session_state.chat_history.append({"role": "assistant", "content": full_response})
