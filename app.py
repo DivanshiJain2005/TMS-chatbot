@@ -16,13 +16,16 @@ st.set_page_config(
     layout="centered",
 )
 
-# Load secrets from Streamlit Cloud (no need for dotenv here)
-GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-INITIAL_RESPONSE = st.secrets["INITIAL_RESPONSE"]
-INITIAL_MSG = st.secrets["INITIAL_MSG"]
-CHAT_CONTEXT = st.secrets["CHAT_CONTEXT"]
+# Load secrets from Streamlit Cloud
+try:
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+    INITIAL_RESPONSE = st.secrets["INITIAL_RESPONSE"]
+    INITIAL_MSG = st.secrets["INITIAL_MSG"]
+    CHAT_CONTEXT = st.secrets["CHAT_CONTEXT"]
+except KeyError as e:
+    st.error(f"Missing secret: {e}. Please ensure the required secrets are set in Streamlit Cloud.")
 
-# Set the API key in the environment variable (not strictly necessary, but good practice)
+# Set the API key in the environment variable (good practice for external API calls)
 os.environ["GROQ_API_KEY"] = GROQ_API_KEY
 
 # Initialize Groq client
@@ -35,8 +38,8 @@ if "chat_history" not in st.session_state:
     ]
 
 # Page title
-st.title("Welcome Buddy🤓!")
-st.caption("Helping You Level Up Your Coding Game")
+st.title("Welcome to the bot!")
+st.caption("Helping You Level Up Your TMS knowledge")
 
 # Display chat history (messages)
 for message in st.session_state.chat_history:
