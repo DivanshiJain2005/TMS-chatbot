@@ -1,50 +1,72 @@
 import os
-from dotenv import dotenv_values
+import json
 import streamlit as st
 from groq import Groq
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-
+# Function to parse Groq stream response
 def parse_groq_stream(stream):
-    # Yield content chunk by chunk as the stream arrives
     for chunk in stream:
         if chunk.choices:
             if chunk.choices[0].delta.content is not None:
                 yield chunk.choices[0].delta.content
 
-
-# streamlit page configuration
+# Streamlit page configuration
 st.set_page_config(
     page_title="TMS Chatbot Careforce",
     layout="centered",
 )
 
-# Load environment variables
+# Load secrets from Streamlit Cloud
 try:
-    secrets = dotenv_values(".env")  # for dev env
-    GROQ_API_KEY = secrets["GROQ_API_KEY"]
-except:
-    secrets = st.secrets  # for streamlit deployment
-    GROQ_API_KEY = secrets["GROQ_API_KEY"]
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+    INITIAL_RESPONSE = st.secrets["INITIAL_RESPONSE"]
+    INITIAL_MSG = st.secrets["INITIAL_MSG"]
+    CHAT_CONTEXT = st.secrets["CHAT_CONTEXT"]
+except KeyError as e:
+    st.error(f"Missing secret: {e}. Please ensure the required secrets are set in Streamlit Cloud.")
 
-# save the api_key to environment variable
+# Set the API key in the environment variable (good practice for external API calls)
 os.environ["GROQ_API_KEY"] = GROQ_API_KEY
 
-INITIAL_RESPONSE = secrets["INITIAL_RESPONSE"]
-INITIAL_MSG = secrets["INITIAL_MSG"]
-CHAT_CONTEXT = secrets["CHAT_CONTEXT"]
+# Initialize Groq client with the API key
+client = Groq(api_key=GROQ_API_KEY)
 
-client = Groq()
+# Load data from the 'data.json' file (replace with your actual file path)
+def load_data():
+    with open('data.json', 'r', encoding="utf8") as file:
+        return json.load(file)
 
-# initialize the chat history if not present in session
+# Perform a simple keyword-based search using TF-IDF
+def search_data(query, data):
+    # Flatten the data into a list of titles and contents
+    data_text = [f"{entry['title']} {entry['content']}" for entry in data["documents"]]
+    
+    # Combine query with data for search
+    documents = [query] + data_text
+
+    # Convert the documents to a matrix of TF-IDF features
+    vectorizer = TfidfVectorizer(stop_words="english")
+    tfidf_matrix = vectorizer.fit_transform(documents)
+
+    # Calculate cosine similarity between the query and the documents
+    similarity_scores = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])
+    most_similar_index = similarity_scores.argmax()
+
+    # Return the most relevant document based on the similarity score
+    return data["documents"][most_similar_index]
+
+# Initialize the chat history if not already in session state
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
         {"role": "assistant", "content": INITIAL_RESPONSE},
     ]
 
-# page title
+# Page title
 st.title("Welcome to Careforce!")
 
-# Display chat history
+# Display chat history (messages)
 for message in st.session_state.chat_history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -53,33 +75,43 @@ for message in st.session_state.chat_history:
 user_prompt = st.chat_input("Ask me")
 
 if user_prompt:
+    # Add user message to chat history
     with st.chat_message("user"):
         st.markdown(user_prompt)
     st.session_state.chat_history.append({"role": "user", "content": user_prompt})
 
-    # Prepare messages for the LLM
+    # Load the TMS data from the JSON file
+    tms_data = load_data()
+
+    # Search for relevant information from the TMS data based on the user query
+    relevant_data = search_data(user_prompt, tms_data)
+    relevant_info = relevant_data["content"]  # Use the content of the most relevant document
+
+    # Prepare messages for the Groq model
     messages = [
         {"role": "system", "content": CHAT_CONTEXT},
         {"role": "assistant", "content": INITIAL_MSG},
+        {"role": "assistant", "content": "Here is some relevant information:"},
+        {"role": "assistant", "content": relevant_info},
         *st.session_state.chat_history
     ]
 
-    # Display assistant response as it streams
+    # Display assistant response in the chat message container
     with st.chat_message("assistant"):
-        # Create the streaming request to Groq API
+        # Request completion from Groq API with streaming enabled
         stream = client.chat.completions.create(
             model="llama3-8b-8192",
             messages=messages,
-            stream=True  # Stream the response
+            stream=True  # Streaming mode
         )
-        
-        # Accumulate the full response in one go, then display it
+
+        # Accumulate the response from the stream
         full_response = ""
         for chunk in parse_groq_stream(stream):
-            full_response += chunk  # Accumulate all the response
+            full_response += chunk  # Concatenate each chunk
 
-        # After accumulating the full response, display it
-        st.markdown(full_response)  
+        # After full response is accumulated, display the complete response
+        st.markdown(full_response)
 
-    # Add the final response to chat history
+    # Add assistant response to chat history
     st.session_state.chat_history.append({"role": "assistant", "content": full_response})
