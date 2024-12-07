@@ -1,3 +1,8 @@
+streamlit
 groq
-streamlit==1.37.0
-python-dotenv
+langchain
+faiss-cpu
+tiktoken
+numpy
+pandas      
+scikit-learn 
