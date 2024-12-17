@@ -23,7 +23,14 @@ try:
     GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
     INITIAL_RESPONSE = st.secrets["INITIAL_RESPONSE"]
     INITIAL_MSG = st.secrets["INITIAL_MSG"]
-    CHAT_CONTEXT = st.secrets["CHAT_CONTEXT"]
+    CHAT_CONTEXT = (
+    "You are an expert assistant specializing in Transcranial Magnetic Stimulation (TMS). "
+    "You should only answer questions strictly related to TMS, such as its uses, procedures, benefits, risks, and related topics. "
+    "If a query is outside the scope of TMS, respond with: "
+    "'I'm sorry, I can only assist with queries related to Transcranial Magnetic Stimulation (TMS).'"
+    "'Please limit your responses to a maximum of 5 sentences or 4-5 lines only. Provide concise, to-the-point answers.'"
+
+)
 except KeyError as e:
     st.error(f"Missing secret: {e}. Please ensure the required secrets are set in Streamlit Cloud.")
 
@@ -87,31 +94,38 @@ if user_prompt:
     relevant_data = search_data(user_prompt, tms_data)
     relevant_info = relevant_data["content"]  # Use the content of the most relevant document
 
+    # Modify the user prompt by adding a request for brevity
+    modified_user_prompt = user_prompt + " Please limit your response to 4-5 lines only."
+
     # Prepare messages for the Groq model
     messages = [
         {"role": "system", "content": CHAT_CONTEXT},
         {"role": "assistant", "content": INITIAL_MSG},
         {"role": "assistant", "content": "Here is some relevant information:"},
         {"role": "assistant", "content": relevant_info},
+        {"role": "user", "content": modified_user_prompt},  # Use the modified user prompt with brevity request
         *st.session_state.chat_history
     ]
 
-    # Display assistant response in the chat message container
-    with st.chat_message("assistant"):
-        # Request completion from Groq API with streaming enabled
-        stream = client.chat.completions.create(
-            model="llama3-8b-8192",
-            messages=messages,
-            stream=True  # Streaming mode
-        )
+    # Set temperature to control response randomness (0.0 for deterministic)
+    temperature = 0.3  # Lower value for more deterministic responses (0.0 to 1.0)
 
-        # Accumulate the response from the stream
-        full_response = ""
-        for chunk in parse_groq_stream(stream):
-            full_response += chunk  # Concatenate each chunk
+    # Request completion from Groq API with streaming enabled and controlled temperature
+    stream = client.chat.completions.create(
+        model="llama3-8b-8192",
+        messages=messages,
+        stream=True,  # Streaming mode
+        temperature=temperature  # Set temperature for more controlled responses
+    )
 
-        # After full response is accumulated, display the complete response
-        st.markdown(full_response)
+    # Accumulate the response from the stream
+    full_response = ""
+    for chunk in parse_groq_stream(stream):
+        full_response += chunk  # Concatenate each chunk
+
+    # After full response is accumulated, display the complete response
+    st.markdown(full_response)
 
     # Add assistant response to chat history
     st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+
